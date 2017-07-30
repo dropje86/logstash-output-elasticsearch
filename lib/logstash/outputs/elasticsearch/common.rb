@@ -4,16 +4,6 @@ module LogStash; module Outputs; class ElasticSearch;
   module Common
     attr_reader :client, :hosts
 
-    # These are codes for temporary recoverable conditions
-    # 404 indicates an endpoint is not found (yet)
-    # 429 just means that ES has too much traffic ATM
-    # 500 when an ES node disconnect occurs this is temporarily returned
-    # 502 occurs when a proxy fails a request to ES (could happen during node shutdown)
-    # 503 means ES, or a proxy is temporarily unavailable
-    # 504 when using a proxy, indicates the backend timed out
-    RETRYABLE_CODES = [404, 429, 500, 502, 503, 504]
-
-    DLQ_CODES = [400]
     SUCCESS_CODES = [200, 201]
     CONFLICT_CODE = 409
 
@@ -149,7 +139,7 @@ module LogStash; module Outputs; class ElasticSearch;
         elsif CONFLICT_CODE == status
           @logger.warn "Failed action.", status: status, action: action, response: response if !failure_type_logging_whitelist.include?(failure["type"])
           next
-        elsif DLQ_CODES.include?(status)
+        elsif dlq_codes.include?(status)
           action_event = action[2]
           # To support bwc, we check if DLQ exists. otherwise we log and drop event (previous behavior)
           if @dlq_writer
@@ -254,7 +244,7 @@ module LogStash; module Outputs; class ElasticSearch;
         sleep_interval = next_sleep_interval(sleep_interval)
         retry unless @stopping.true?
       rescue ::LogStash::Outputs::ElasticSearch::HttpClient::Pool::BadResponseCodeError => e
-        if RETRYABLE_CODES.include?(e.response_code)
+        if retry_codes.include?(e.response_code)
           log_hash = {:code => e.response_code, :url => e.url.sanitized.to_s}
           log_hash[:body] = e.body if @logger.debug? # Generally this is too verbose
           message = "Encountered a retryable error. Will Retry with exponential backoff "

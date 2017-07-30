@@ -52,12 +52,10 @@ require "forwardable"
 # The following errors are retried infinitely:
 #
 # - Network errors (Inability to connect)
-# - 404 (Not found) Indicating an upstream proxy has no matching route
 # - 429 (Too many requests) Graceful backoff indication by Elastic
-# - 500 (Internal Server Error) when an ES node disconnect occurs this is temporarily returned
-# - 502 (Bad gateway) During shutdown a proxy might return this
 # - 503 (Service unavailable) Proxy returns an unavailable service
-# - 504 (Gateway timed out) Proxy backend timed out
+#
+# Retry and DLQ codes can be supplied by configuring `retry_codes` and `dlq_codes`.
 #
 # NOTE: 409 exceptions are no longer retried. Please set a higher `retry_on_conflict` value if you experience 409 exceptions.
 # It is more performant for Elasticsearch to retry these exceptions than this plugin.
@@ -163,6 +161,12 @@ class LogStash::Outputs::ElasticSearch < LogStash::Outputs::Base
 
   # Set the keystore password
   config :keystore_password, :validate => :password
+
+  # HTTP response codes marked as temporary failures which will be retried
+  config :retry_codes, :validate => :number, :default => [429, 503], :list => true
+
+  # HTTP response codes marked for moving to the Dead Letter Queue (DLQ)
+  config :dlq_codes, :validate => :number, :default => [400], :list => true
 
   # This setting asks Elasticsearch for the list of all cluster nodes and adds them to the hosts list.
   # Note: This will return ALL nodes with HTTP enabled (including master nodes!). If you use
